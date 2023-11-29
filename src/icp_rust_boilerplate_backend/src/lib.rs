@@ -1,3 +1,4 @@
+// Import necessary external crates and modules
 #[macro_use]
 extern crate serde;
 
@@ -8,9 +9,11 @@ use ic_stable_structures::{BoundedStorable, Cell, DefaultMemoryImpl, StableBTree
 use std::{borrow::Cow, cell::RefCell};
 use std::borrow::Borrow;
 
+// Define type aliases for better readability
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 type IdCell = Cell<u64, Memory>;
 
+// Define the structure representing an accessory
 #[derive(candid::CandidType, Clone, Serialize, Deserialize, Default)]
 struct Accessory {
     id: u64,
@@ -23,6 +26,7 @@ struct Accessory {
     is_available: bool,
 }
 
+// Implement trait for serializing and deserializing the accessory
 impl Storable for Accessory {
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
         Cow::Owned(Encode!(self).unwrap())
@@ -33,11 +37,13 @@ impl Storable for Accessory {
     }
 }
 
+// Implement trait for specifying storage characteristics of the accessory
 impl BoundedStorable for Accessory {
     const MAX_SIZE: u32 = 1024;
     const IS_FIXED_SIZE: bool = false;
 }
 
+// Define thread-local variables for managing memory, ID counter, and accessory storage
 thread_local! {
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> = RefCell::new(
         MemoryManager::init(DefaultMemoryImpl::default())
@@ -54,6 +60,7 @@ thread_local! {
         ));
 }
 
+// Define a payload structure for adding or updating an accessory
 #[derive(candid::CandidType, Serialize, Deserialize, Default)]
 struct AccessoryPayload {
     name: String,
@@ -63,6 +70,7 @@ struct AccessoryPayload {
     is_available: bool,
 }
 
+// Define a structure for recording transaction history
 #[derive(candid::CandidType, Deserialize, Serialize)]
 struct TransactionRecord {
     timestamp: u64,
@@ -70,12 +78,14 @@ struct TransactionRecord {
     transaction_type: String,
 }
 
+// Function to insert an accessory into the storage
 fn do_insert_accessory(accessory: &Accessory) {
     ACCESSORY_STORAGE.with(|service| {
         service.borrow_mut().insert(accessory.id, accessory.clone());
     });
 }
 
+// Query function to get an accessory by ID
 #[ic_cdk::query]
 fn get_accessory(id: u64) -> Result<Accessory, Error> {
     match _get_accessory(&id) {
@@ -86,6 +96,7 @@ fn get_accessory(id: u64) -> Result<Accessory, Error> {
     }
 }
 
+// Query function to get accessories by category
 #[ic_cdk::query]
 fn get_accessories_by_category(category: String) -> Vec<Accessory> {
     ACCESSORY_STORAGE.with(|service| {
@@ -98,6 +109,7 @@ fn get_accessories_by_category(category: String) -> Vec<Accessory> {
     })
 }
 
+// Query function to get available accessories
 #[ic_cdk::query]
 fn get_available_accessories() -> Vec<Accessory> {
     ACCESSORY_STORAGE.with(|service| {
@@ -110,6 +122,7 @@ fn get_available_accessories() -> Vec<Accessory> {
     })
 }
 
+// Query function to search for accessories based on a query string
 #[ic_cdk::query]
 fn search_accessories(query: String) -> Vec<Accessory> {
     ACCESSORY_STORAGE.with(|service| {
@@ -122,6 +135,7 @@ fn search_accessories(query: String) -> Vec<Accessory> {
     })
 }
 
+// Query function to get transaction history of an accessory by ID
 #[ic_cdk::query]
 fn get_accessory_transaction_history(id: u64) -> Vec<TransactionRecord> {
     match _get_accessory(&id) {
@@ -145,6 +159,7 @@ fn get_accessory_transaction_history(id: u64) -> Vec<TransactionRecord> {
     }
 }
 
+// Update function to add a new accessory
 #[ic_cdk::update]
 fn add_accessory(accessory_payload: AccessoryPayload) -> Option<Accessory> {
     let id = ID_COUNTER
@@ -169,6 +184,7 @@ fn add_accessory(accessory_payload: AccessoryPayload) -> Option<Accessory> {
     Some(accessory)
 }
 
+// Update function to update an existing accessory
 #[ic_cdk::update]
 fn update_accessory(id: u64, payload: AccessoryPayload) -> Result<Accessory, Error> {
     match ACCESSORY_STORAGE.with(|service| service.borrow_mut().get(&id)) {
@@ -180,8 +196,6 @@ fn update_accessory(id: u64, payload: AccessoryPayload) -> Result<Accessory, Err
             accessory.updated_at = Some(time());
             accessory.is_available = payload.is_available;
 
-            // No need to call do_insert_accessory as the accessory is modified in place
-
             Ok(accessory.clone())
         }
         None => Err(Error::NotFound {
@@ -190,6 +204,7 @@ fn update_accessory(id: u64, payload: AccessoryPayload) -> Result<Accessory, Err
     }
 }
 
+// Update function to mark an accessory as available
 #[ic_cdk::update]
 fn mark_accessory_as_available(id: u64) -> Result<Accessory, Error> {
     match ACCESSORY_STORAGE.with(|service| service.borrow_mut().get(&id)) {
@@ -204,6 +219,7 @@ fn mark_accessory_as_available(id: u64) -> Result<Accessory, Error> {
     }
 }
 
+// Update function to mark an accessory as unavailable
 #[ic_cdk::update]
 fn mark_accessory_as_unavailable(id: u64) -> Result<Accessory, Error> {
     if let Some(mut accessory) = ACCESSORY_STORAGE.with(|service| service.borrow_mut().get(&id)) {
@@ -217,6 +233,7 @@ fn mark_accessory_as_unavailable(id: u64) -> Result<Accessory, Error> {
     }
 }
 
+// Update function to delete an accessory
 #[ic_cdk::update]
 fn delete_accessory(id: u64) -> Result<Accessory, Error> {
     match ACCESSORY_STORAGE.with(|service| service.borrow_mut().remove(&id)) {
@@ -227,6 +244,7 @@ fn delete_accessory(id: u64) -> Result<Accessory, Error> {
     }
 }
 
+// Update function to bulk update accessories
 #[ic_cdk::update]
 fn bulk_update_accessories(updates: Vec<(u64, AccessoryPayload)>) -> Vec<Result<Accessory, Error>> {
     let mut results = Vec::new();
@@ -237,17 +255,21 @@ fn bulk_update_accessories(updates: Vec<(u64, AccessoryPayload)>) -> Vec<Result<
     results
 }
 
+// Enum to represent possible error types
 #[derive(candid::CandidType, Deserialize, Serialize)]
 enum Error {
     NotFound { msg: String },
 }
 
+// Internal function to get an accessory by ID
 fn _get_accessory(id: &u64) -> Option<Accessory> {
     let accessory_storage = MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)));
     StableBTreeMap::<u64, Accessory, Memory>::init(accessory_storage)
         .borrow()
         .get(id)
 }
+
+// Query function to get the price of an accessory by ID
 #[ic_cdk::query]
 fn get_accessory_price(id: u64) -> Result<u64, Error> {
     match _get_accessory(&id) {
@@ -258,4 +280,5 @@ fn get_accessory_price(id: u64) -> Result<u64, Error> {
     }
 }
 
+// Export the canister interface definition
 ic_cdk::export_candid!();
