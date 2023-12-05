@@ -24,6 +24,7 @@ struct Accessory {
     created_at: u64,
     updated_at: Option<u64>,
     is_available: bool,
+    inventory_count: u64,
 }
 
 // Implement trait for serializing and deserializing the accessory
@@ -42,7 +43,33 @@ impl BoundedStorable for Accessory {
     const MAX_SIZE: u32 = 1024;
     const IS_FIXED_SIZE: bool = false;
 }
+// Define the Review struct
+#[derive(candid::CandidType, Clone, Serialize, Deserialize, Default)]
+struct Review {
+    id: u64,
+    accessory_id: u64,
+    user_id: u64,
+    rating: u8,
+    comment: String,
+    created_at: u64,
+}
 
+// Implement the Storable trait for Review
+impl Storable for Review {
+    fn to_bytes(&self) -> Cow<[u8]> {
+        Cow::Owned(Encode!(self).unwrap())
+    }
+
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
+        Decode!(bytes.as_ref(), Self).unwrap()
+    }
+}
+
+// Implement the BoundedStorable trait for Review
+impl BoundedStorable for Review {
+    const MAX_SIZE: u32 = 1024; // Maximum size for the serialized data
+    const IS_FIXED_SIZE: bool = false; // Data size is not fixed
+}
 // Define thread-local variables for managing memory, ID counter, and accessory storage
 thread_local! {
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> = RefCell::new(
@@ -58,6 +85,11 @@ thread_local! {
         RefCell::new(StableBTreeMap::init(
             MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))
         ));
+    static REVIEW_STORAGE: RefCell<StableBTreeMap<u64, Review, Memory>> = RefCell::new(
+        StableBTreeMap::init(
+            MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(3))) // Using a new MemoryId for reviews
+        )
+    );
 }
 
 // Define a payload structure for adding or updating an accessory
@@ -68,6 +100,7 @@ struct AccessoryPayload {
     category: String,
     price: u64,  // New field: price
     is_available: bool,
+    inventory_count: u64,
 }
 
 // Define a structure for recording transaction history
@@ -77,7 +110,14 @@ struct TransactionRecord {
     change_type: String,
     transaction_type: String,
 }
-
+// Define a payload structure for adding or updating a review
+#[derive(candid::CandidType, Serialize, Deserialize, Default)]
+struct ReviewPayload {
+    accessory_id: u64,
+    user_id: u64,
+    rating: u8,
+    comment: String,
+}
 // Function to insert an accessory into the storage
 fn do_insert_accessory(accessory: &Accessory) {
     ACCESSORY_STORAGE.with(|service| {
@@ -158,7 +198,41 @@ fn get_accessory_transaction_history(id: u64) -> Vec<TransactionRecord> {
         None => Vec::new(),
     }
 }
+// Update function to adjust the stock level for an accessory
+// Update function to adjust the stock level for an accessory
+#[ic_cdk::update]
+fn update_inventory(id: u64, new_inventory_count: u64) -> Result<Accessory, Error> {
+    ACCESSORY_STORAGE.with(|service| {
+        let mut accessories = service.borrow_mut();
+        if let Some(accessory) = accessories.get(&id) {
+            // Clone the accessory to update it, since we can't modify it in place
+            let mut updated_accessory = accessory.clone();
+            updated_accessory.inventory_count = new_inventory_count;
+            
+            // Insert the updated accessory back into the map
+            accessories.insert(id, updated_accessory.clone());
+            Ok(updated_accessory)
+        } else {
+            Err(Error::NotFound {
+                msg: format!("Accessory with id={} not found", id),
+            })
+        }
+    })
+}
 
+
+
+// Query function to return accessories with low stock levels
+#[ic_cdk::query]
+fn check_inventory_levels(threshold: u64) -> Vec<Accessory> {
+    ACCESSORY_STORAGE.with(|service| {
+        service.borrow()
+            .iter()
+            .filter(|(_, accessory)| accessory.inventory_count <= threshold)
+            .map(|(_, accessory)| accessory.clone())
+            .collect()
+    })
+}
 // Update function to add a new accessory
 #[ic_cdk::update]
 fn add_accessory(accessory_payload: AccessoryPayload) -> Option<Accessory> {
@@ -178,6 +252,7 @@ fn add_accessory(accessory_payload: AccessoryPayload) -> Option<Accessory> {
         created_at: time(),
         updated_at: None,
         is_available: accessory_payload.is_available,
+        inventory_count: accessory_payload.inventory_count,
     };
 
     do_insert_accessory(&accessory);
@@ -233,6 +308,46 @@ fn mark_accessory_as_unavailable(id: u64) -> Result<Accessory, Error> {
     }
 }
 
+// Function to insert a review into the storage
+fn do_insert_review(review: &Review) {
+    REVIEW_STORAGE.with(|service| {
+        service.borrow_mut().insert(review.id, review.clone());
+    });
+}
+
+// Update function to add a new review
+#[ic_cdk::update]
+fn add_review(review_payload: ReviewPayload) -> Result<Review, Error> {
+    let id = ID_COUNTER
+        .with(|counter| {
+            let current_value = *counter.borrow().get();
+            counter.borrow_mut().set(current_value + 1)
+        })
+        .expect("cannot increment id counter");
+
+    let review = Review {
+        id,
+        accessory_id: review_payload.accessory_id,
+        user_id: review_payload.user_id,
+        rating: review_payload.rating,
+        comment: review_payload.comment,
+        created_at: time(),
+    };
+
+    do_insert_review(&review);
+    Ok(review)
+}
+// Query function to get all reviews for a specific accessory
+#[ic_cdk::query]
+fn get_reviews(accessory_id: u64) -> Vec<Review> {
+    REVIEW_STORAGE.with(|service| {
+        service.borrow()
+            .iter()
+            .filter(|(_, review)| review.accessory_id == accessory_id)
+            .map(|(_, review)| review.clone())
+            .collect()
+    })
+}
 // Update function to delete an accessory
 #[ic_cdk::update]
 fn delete_accessory(id: u64) -> Result<Accessory, Error> {
