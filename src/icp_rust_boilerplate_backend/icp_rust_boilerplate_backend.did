@@ -4,6 +4,7 @@ type Accessory = record {
   name : text;
   description : text;
   created_at : nat64;
+  seller : text;
   category : text;
   is_available : bool;
   price : nat64;
@@ -15,7 +16,11 @@ type AccessoryPayload = record {
   is_available : bool;
   price : nat64;
 };
-type Error = variant { NotFound : record { msg : text } };
+type Error = variant {
+  ValidationFailed : record { msg : text };
+  NotFound : record { msg : text };
+  AuthenticationFailed : record { msg : text };
+};
 type Result = variant { Ok : Accessory; Err : Error };
 type Result_1 = variant { Ok : nat64; Err : Error };
 type TransactionRecord = record {
@@ -24,7 +29,7 @@ type TransactionRecord = record {
   timestamp : nat64;
 };
 service : {
-  add_accessory : (AccessoryPayload) -> (opt Accessory);
+  add_accessory : (AccessoryPayload) -> (Result);
   bulk_update_accessories : (vec record { nat64; AccessoryPayload }) -> (
       vec Result,
     );
@@ -34,8 +39,7 @@ service : {
   get_accessory_price : (nat64) -> (Result_1) query;
   get_accessory_transaction_history : (nat64) -> (vec TransactionRecord) query;
   get_available_accessories : () -> (vec Accessory) query;
-  mark_accessory_as_available : (nat64) -> (Result);
-  mark_accessory_as_unavailable : (nat64) -> (Result);
   search_accessories : (text) -> (vec Accessory) query;
+  toggle_accessory_availability : (nat64) -> (Result);
   update_accessory : (nat64, AccessoryPayload) -> (Result);
 }
