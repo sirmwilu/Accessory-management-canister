@@ -1,0 +1,1 @@
+/mnt/c/Users/farze/Documents/work/icp-feedbacks/Blockchain-Project/test2/Accessory-management-canister/target/wasm32-unknown-unknown/release/icp_rust_boilerplate_backend.wasm: /mnt/c/Users/farze/Documents/work/icp-feedbacks/Blockchain-Project/test2/Accessory-management-canister/src/icp_rust_boilerplate_backend/src/lib.rs
